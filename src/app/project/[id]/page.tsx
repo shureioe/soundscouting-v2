@@ -176,6 +176,7 @@ export default function ProjectPage(): React.ReactElement {
 
     try {
       setIsExporting(true);
+      showToast('Generando PDF del proyecto...', 'info');
       await exportProjectPdf(project);
       showToast('PDF generado correctamente.', 'success');
     } catch (error) {
