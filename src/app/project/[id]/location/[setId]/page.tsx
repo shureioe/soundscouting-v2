@@ -15,6 +15,7 @@ import {
   findProject,
   LocationSet,
   LocationStatus,
+  preparePhoto,
   Project,
   removeSetPhoto,
   setSetCoords,
@@ -339,6 +340,10 @@ export default function LocationDetailPage(): React.ReactElement {
         let currentLocation = location;
         let addedCount = 0;
         let duplicateCount = 0;
+        let failedCount = 0;
+        let limitReached = false;
+
+        for (const file of files) {
         let limitReached = false;
 
         for (let index = 0; index < dataUrls.length; index += 1) {
@@ -350,6 +355,14 @@ export default function LocationDetailPage(): React.ReactElement {
           }
 
           if (!currentProject || !currentLocation) {
+            break;
+          }
+
+          let dataUrl: string;
+          try {
+            dataUrl = await preparePhoto(file);
+          } catch {
+            failedCount += 1;
             continue;
           }
       const toastQueue: ToastQueueItem[] = [];
@@ -388,6 +401,7 @@ export default function LocationDetailPage(): React.ReactElement {
           continue;
         }
 
+          if (currentLocation.photos.some((photoItem) => photoItem.dataUrl === dataUrl)) {
         try {
           const dataUrl = await convertFileToJpegDataUrl(file, detectedType);
           const updated = addSetPhoto(currentProject.id, currentLocation.id, dataUrl);
@@ -398,6 +412,13 @@ export default function LocationDetailPage(): React.ReactElement {
             continue;
           }
 
+          const updated = addSetPhoto(currentProject.id, currentLocation.id, {
+            dataUrl,
+            createdAt: new Date().toISOString(),
+            fileName: file.name
+          });
+          if (!updated) {
+            failedCount += 1;
           if (!updated) {
             toastQueue.push({ message: 'No se pudo guardar la imagen ' + file.name + '.', variant: 'error' });
             continue;
@@ -437,6 +458,13 @@ export default function LocationDetailPage(): React.ReactElement {
 
         if (addedCount > 0) {
           const duplicateNote = duplicateCount > 0 ? ' Algunas imágenes ya existían y se omitieron.' : '';
+          const failureNote = failedCount > 0 ? ' Algunas imágenes no se pudieron procesar.' : '';
+          const limitNote = limitReached
+            ? ' Se alcanzó el máximo de fotos y quedaron archivos pendientes de añadir.'
+            : '';
+          const variant: ToastVariant = limitReached ? 'info' : 'success';
+          showToast(
+            'Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + '.' + duplicateNote + failureNote + limitNote,
           const limitNote = limitReached
             ? ' Se alcanzó el máximo de fotos y no se procesaron todas las imágenes seleccionadas.'
             : '';
@@ -447,6 +475,13 @@ export default function LocationDetailPage(): React.ReactElement {
           );
         } else if (limitReached) {
           showToast(
+            'Se alcanzó el máximo de fotos para esta localización y quedaron archivos sin procesar.',
+            'info'
+          );
+        } else if (duplicateCount > 0 && failedCount === 0) {
+          showToast('Las imágenes seleccionadas ya estaban guardadas.', 'error');
+        } else if (failedCount > 0) {
+          showToast('No se pudieron procesar algunas imágenes. Inténtalo de nuevo.', 'error');
             'Se alcanzó el máximo de fotos para esta localización y no se procesaron todas las imágenes seleccionadas.',
             'info'
           );
@@ -494,7 +529,7 @@ export default function LocationDetailPage(): React.ReactElement {
   );
 
   const handleRemovePhoto = React.useCallback(
-    (photo: string) => {
+    (photoId: string) => {
       if (!project || !location) {
         return;
       }
@@ -503,7 +538,7 @@ export default function LocationDetailPage(): React.ReactElement {
         return;
       }
 
-      const updated = removeSetPhoto(project.id, location.id, photo);
+      const updated = removeSetPhoto(project.id, location.id, photoId);
       if (!updated) {
         showToast('No se pudo eliminar la foto seleccionada.', 'error');
         return;
@@ -559,6 +594,7 @@ export default function LocationDetailPage(): React.ReactElement {
 
     try {
       setIsExporting(true);
+      showToast('Generando PDF de la localización...', 'info');
       await exportLocationPdf(project, location);
       showToast('PDF generado correctamente.', 'success');
     } catch {
@@ -707,12 +743,29 @@ export default function LocationDetailPage(): React.ReactElement {
           ) : (
             <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
               {location.photos.map((photo) => (
+                <figure
+                  key={photo.id}
+                  className='group relative overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/60'
+                >
+                  <img
+                    src={photo.dataUrl}
+                    alt={'Foto de ' + location.name}
+                    className='h-40 w-full object-cover'
+                    loading='lazy'
+                  />
                 <figure key={photo} className='group relative overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/60'>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo} alt={'Foto de ' + location.name} className='h-40 w-full object-cover' loading='lazy' />
                   <figcaption className='flex items-center justify-between gap-2 px-3 py-2 text-xs text-neutral-300'>
-                    <span className='truncate'>{location.name}</span>
-                    <Button type='button' variant='ghost' className='px-2 py-1 text-xs' onClick={() => handleRemovePhoto(photo)}>
+                    <span className='truncate'>
+                      {new Date(photo.createdAt).toLocaleString('es-ES')}
+                    </span>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      className='px-2 py-1 text-xs'
+                      onClick={() => handleRemovePhoto(photo.id)}
+                    >
                       Borrar
                     </Button>
                   </figcaption>
