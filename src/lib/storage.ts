@@ -237,27 +237,66 @@ export function setSetStatus(projectId: string, locationId: string, status: Loca
 }
 
 export function setSetNotes(projectId: string, locationId: string, notes: string): Project | undefined {
-  if (notes.length > 2000) {
+  const trimmed = notes.trim();
+  if (trimmed.length > 2000) {
     throw new Error('NOTES_TOO_LONG');
   }
 
   return updateLocation(projectId, locationId, (location) => {
-    if (location.notes === notes) {
+    if (location.notes === trimmed) {
       return { ...location };
     }
 
-    return { ...location, notes };
+    return { ...location, notes: trimmed };
   });
 }
 
-export function addSetPhoto(projectId: string, locationId: string, dataUrl: string): Project | undefined {
-  return updateLocation(projectId, locationId, (location) => {
-    if (location.photos.includes(dataUrl)) {
-      return { ...location };
+export function addSetPhoto(
+  projectId: string,
+  locationId: string,
+  dataUrl: string
+): Project | false | undefined {
+  let duplicate = false;
+  let updatedProject: Project | undefined;
+
+  const projects = getProjects().map((project) => {
+    if (project.id !== projectId) {
+      return project;
     }
 
-    return { ...location, photos: [...location.photos, dataUrl] };
+    const index = project.locations.findIndex((location) => location.id === locationId);
+    if (index === -1) {
+      return project;
+    }
+
+    const currentLocation = project.locations[index];
+    if (currentLocation.photos.includes(dataUrl)) {
+      duplicate = true;
+      return project;
+    }
+
+    const now = new Date().toISOString();
+    const updatedLocation: LocationSet = {
+      ...currentLocation,
+      photos: [...currentLocation.photos, dataUrl],
+      updatedAt: now
+    };
+    const updatedLocations = [...project.locations];
+    updatedLocations[index] = updatedLocation;
+    updatedProject = { ...project, updatedAt: now, locations: updatedLocations };
+    return updatedProject;
   });
+
+  if (duplicate) {
+    return false;
+  }
+
+  if (!updatedProject) {
+    return undefined;
+  }
+
+  persist(projects);
+  return updatedProject;
 }
 
 export function removeSetPhoto(projectId: string, locationId: string, dataUrl: string): Project | undefined {
