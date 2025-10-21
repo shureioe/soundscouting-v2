@@ -5,12 +5,19 @@ export interface LocationCoordinates {
   lng: number;
 }
 
+export interface LocationPhoto {
+  id: string;
+  dataUrl: string;
+  createdAt: string;
+  fileName?: string;
+}
+
 export interface LocationSet {
   id: string;
   name: string;
   notes: string;
   status: LocationStatus;
-  photos: string[];
+  photos: LocationPhoto[];
   coords?: LocationCoordinates | null;
   createdAt: string;
   updatedAt: string;
@@ -28,6 +35,174 @@ const STORAGE_KEY = 'soundscouting-projects';
 
 let memoryProjects: Project[] = [];
 
+interface NormalizedProjects {
+  projects: Project[];
+  changed: boolean;
+}
+
+type StoredPhoto = string | LocationPhoto | null | undefined;
+
+function createId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return Math.random().toString(36).slice(2);
+}
+
+function normalizePhoto(entry: StoredPhoto, fallbackDate: string): { photo: LocationPhoto | null; changed: boolean } {
+  if (!entry) {
+    return { photo: null, changed: true };
+  }
+
+  if (typeof entry === 'string') {
+    return {
+      photo: {
+        id: createId(),
+        dataUrl: entry,
+        createdAt: fallbackDate
+      },
+      changed: true
+    };
+  }
+
+  if (typeof entry === 'object' && typeof entry.dataUrl === 'string') {
+    const createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : fallbackDate;
+    const id = entry.id || createId();
+    return {
+      photo: {
+        id,
+        dataUrl: entry.dataUrl,
+        createdAt,
+        fileName: entry.fileName && typeof entry.fileName === 'string' ? entry.fileName : undefined
+      },
+      changed: !entry.id || entry.createdAt !== createdAt
+    };
+  }
+
+  return { photo: null, changed: true };
+}
+
+function normalizeLocation(location: any): { location: LocationSet | null; changed: boolean } {
+  if (!location || typeof location !== 'object') {
+    return { location: null, changed: true };
+  }
+
+  const createdAt = typeof location.createdAt === 'string' ? location.createdAt : new Date().toISOString();
+  const updatedAt = typeof location.updatedAt === 'string' ? location.updatedAt : createdAt;
+  const photos: StoredPhoto[] = Array.isArray(location.photos) ? location.photos : [];
+  const normalizedPhotos: LocationPhoto[] = [];
+  let photosChanged = false;
+  let coordsChanged = false;
+
+  photos.forEach((entry) => {
+    const { photo, changed } = normalizePhoto(entry, updatedAt);
+    if (photo) {
+      normalizedPhotos.push(photo);
+    }
+    if (changed) {
+      photosChanged = true;
+    }
+  });
+
+  let coords: LocationCoordinates | null = null;
+  if (location.coords && typeof location.coords === 'object') {
+    const lat = Number(location.coords.lat);
+    const lng = Number(location.coords.lng);
+    if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+      coords = { lat, lng };
+    } else {
+      coordsChanged = true;
+    }
+  }
+
+  const status: LocationStatus =
+    location.status === 'approved' || location.status === 'rejected' || location.status === 'pending'
+      ? location.status
+      : 'pending';
+
+  return {
+    location: {
+      id: typeof location.id === 'string' ? location.id : createId(),
+      name: typeof location.name === 'string' ? location.name : 'Localización',
+      notes: typeof location.notes === 'string' ? location.notes : '',
+      status,
+      photos: normalizedPhotos,
+      coords,
+      createdAt,
+      updatedAt
+    },
+    changed:
+      photosChanged ||
+      coordsChanged ||
+      typeof location.id !== 'string' ||
+      typeof location.name !== 'string' ||
+      typeof location.notes !== 'string' ||
+      location.status !== status ||
+      typeof location.createdAt !== 'string' ||
+      typeof location.updatedAt !== 'string'
+  };
+}
+
+function normalizeProject(project: any): { project: Project | null; changed: boolean } {
+  if (!project || typeof project !== 'object') {
+    return { project: null, changed: true };
+  }
+
+  const createdAt = typeof project.createdAt === 'string' ? project.createdAt : new Date().toISOString();
+  const updatedAt = typeof project.updatedAt === 'string' ? project.updatedAt : createdAt;
+  const locations = Array.isArray(project.locations) ? project.locations : [];
+  const normalizedLocations: LocationSet[] = [];
+  let locationsChanged = false;
+
+  locations.forEach((item) => {
+    const result = normalizeLocation(item);
+    if (result.location) {
+      normalizedLocations.push(result.location);
+    }
+    if (result.changed) {
+      locationsChanged = true;
+    }
+  });
+
+  return {
+    project: {
+      id: typeof project.id === 'string' ? project.id : createId(),
+      name: typeof project.name === 'string' ? project.name : 'Proyecto sin título',
+      createdAt,
+      updatedAt,
+      locations: normalizedLocations
+    },
+    changed:
+      locationsChanged ||
+      typeof project.id !== 'string' ||
+      typeof project.name !== 'string' ||
+      typeof project.createdAt !== 'string' ||
+      typeof project.updatedAt !== 'string'
+  };
+}
+
+function normalizeProjects(raw: unknown): NormalizedProjects {
+  if (!Array.isArray(raw)) {
+    return { projects: [], changed: true };
+  }
+
+  const projects: Project[] = [];
+  let changed = false;
+
+  raw.forEach((item) => {
+    const result = normalizeProject(item);
+    if (result.project) {
+      projects.push(result.project);
+    }
+    if (result.changed) {
+      changed = true;
+    }
+  });
+
+  return { projects, changed };
+}
+
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
@@ -43,8 +218,13 @@ function readFromLocalStorage(): Project[] | null {
       return [];
     }
 
-    const parsed = JSON.parse(raw) as Project[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw) as unknown;
+    const { projects, changed } = normalizeProjects(parsed);
+    if (changed) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    }
+
+    return projects;
   } catch {
     return [];
   }
@@ -69,14 +249,6 @@ export function getProjects(): Project[] {
 
 export function saveProjects(projects: Project[]): void {
   persist(projects);
-}
-
-function createId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return Math.random().toString(36).slice(2);
 }
 
 function normalize(value: string): string {
@@ -250,19 +422,103 @@ export function setSetNotes(projectId: string, locationId: string, notes: string
   });
 }
 
-export function addSetPhoto(projectId: string, locationId: string, dataUrl: string): Project | undefined {
-  return updateLocation(projectId, locationId, (location) => {
-    if (location.photos.includes(dataUrl)) {
+export interface AddPhotoInput {
+  dataUrl: string;
+  createdAt?: string;
+  fileName?: string;
+}
+
+export async function preparePhoto(file: File): Promise<string> {
+  if (typeof window === 'undefined') {
+    throw new Error('IMAGE_PROCESSING_NOT_SUPPORTED');
+  }
+
+  const bitmap =
+    typeof createImageBitmap === 'function'
+      ? await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions).catch(() => null)
+      : null;
+
+  let objectUrl: string | null = null;
+  const imageElement = bitmap
+    ? null
+    : await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        objectUrl = URL.createObjectURL(file);
+        image.onload = () => resolve(image);
+        image.onerror = () => {
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+          }
+          reject(new Error('IMAGE_LOAD_ERROR'));
+        };
+        image.src = objectUrl;
+      });
+
+  const width = bitmap ? bitmap.width : imageElement?.naturalWidth ?? 0;
+  const height = bitmap ? bitmap.height : imageElement?.naturalHeight ?? 0;
+
+  if (!width || !height) {
+    throw new Error('INVALID_IMAGE_DIMENSIONS');
+  }
+
+  const MAX_SIZE = 2560;
+  const scale = Math.min(1, MAX_SIZE / Math.max(width, height));
+  const targetWidth = Math.round(width * scale) || width;
+  const targetHeight = Math.round(height * scale) || height;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('CANVAS_CONTEXT_UNAVAILABLE');
+  }
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, targetWidth, targetHeight);
+
+  if (bitmap) {
+    context.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+    bitmap.close();
+  } else if (imageElement) {
+    context.drawImage(imageElement, 0, 0, targetWidth, targetHeight);
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  return dataUrl;
+}
+
+export function addSetPhoto(projectId: string, locationId: string, input: string | AddPhotoInput): Project {
+  const project = updateLocation(projectId, locationId, (location) => {
+    const dataUrl = typeof input === 'string' ? input : input.dataUrl;
+    if (location.photos.some((photo) => photo.dataUrl === dataUrl)) {
       return { ...location };
     }
 
-    return { ...location, photos: [...location.photos, dataUrl] };
+    const photo: LocationPhoto = {
+      id: createId(),
+      dataUrl,
+      createdAt: typeof input === 'string' ? new Date().toISOString() : input.createdAt ?? new Date().toISOString(),
+      fileName: typeof input === 'string' ? undefined : input.fileName
+    };
+
+    return { ...location, photos: [...location.photos, photo] };
   });
+
+  if (!project) {
+    throw new Error('ADD_SET_PHOTO_FAILED');
+  }
+
+  return project;
 }
 
-export function removeSetPhoto(projectId: string, locationId: string, dataUrl: string): Project | undefined {
+export function removeSetPhoto(projectId: string, locationId: string, identifier: string): Project | undefined {
   return updateLocation(projectId, locationId, (location) => {
-    const filtered = location.photos.filter((photo) => photo !== dataUrl);
+    const filtered = location.photos.filter((photo) => photo.id !== identifier && photo.dataUrl !== identifier);
     if (filtered.length === location.photos.length) {
       return null;
     }
