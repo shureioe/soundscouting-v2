@@ -188,21 +188,24 @@ export default function LocationDetailPage(): React.ReactElement {
         return;
       }
 
-      const filesToProcess = files.slice(0, remainingSlots);
-      if (files.length > remainingSlots) {
-        showToast('Solo se añadieron las primeras ' + remainingSlots + ' imágenes seleccionadas.', 'info');
-      }
-
       setIsUploadingPhotos(true);
 
       try {
-        const dataUrls = await Promise.all(filesToProcess.map((file) => readFileAsDataUrl(file)));
+        const dataUrls = await Promise.all(files.map((file) => readFileAsDataUrl(file)));
         let currentProject = project;
         let currentLocation = location;
         let addedCount = 0;
         let duplicateCount = 0;
+        let limitReached = false;
 
-        for (const dataUrl of dataUrls) {
+        for (let index = 0; index < dataUrls.length; index += 1) {
+          const dataUrl = dataUrls[index];
+
+          if (addedCount >= remainingSlots) {
+            limitReached = true;
+            break;
+          }
+
           if (!currentProject || !currentLocation) {
             continue;
           }
@@ -227,9 +230,21 @@ export default function LocationDetailPage(): React.ReactElement {
 
         if (addedCount > 0) {
           const duplicateNote = duplicateCount > 0 ? ' Algunas imágenes ya existían y se omitieron.' : '';
-          showToast('Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + '.' + duplicateNote, 'success');
+          const limitNote = limitReached
+            ? ' Se alcanzó el máximo de fotos y no se procesaron todas las imágenes seleccionadas.'
+            : '';
+          const variant: ToastVariant = limitReached ? 'info' : 'success';
+          showToast(
+            'Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + '.' + duplicateNote + limitNote,
+            variant
+          );
+        } else if (limitReached) {
+          showToast(
+            'Se alcanzó el máximo de fotos para esta localización y no se procesaron todas las imágenes seleccionadas.',
+            'info'
+          );
         } else if (duplicateCount > 0) {
-          showToast('Las imágenes seleccionadas ya estaban guardadas.', 'info');
+          showToast('Las imágenes seleccionadas ya estaban guardadas.', 'error');
         } else {
           showToast('No se pudieron añadir las imágenes seleccionadas.', 'error');
         }
