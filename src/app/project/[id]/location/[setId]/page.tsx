@@ -488,8 +488,14 @@ export default function LocationDetailPage(): React.ReactElement {
         } else if (duplicateCount > 0) {
           showToast('Las imágenes seleccionadas ya estaban guardadas.', 'error');
         } else {
-          showToast('No se pudieron añadir las imágenes seleccionadas.', 'error');
+          toastQueue.push({ message: 'No se pudieron añadir las imágenes seleccionadas.', variant: 'error' });
         }
+
+        toastQueue.forEach((toastItem, index) => {
+          window.setTimeout(() => {
+            showToast(toastItem.message, toastItem.variant);
+          }, index * 10);
+        });
       } catch {
         showToast('No se pudieron procesar las imágenes. Inténtalo de nuevo.', 'error');
       } finally {
