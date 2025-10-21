@@ -409,16 +409,17 @@ export function setSetStatus(projectId: string, locationId: string, status: Loca
 }
 
 export function setSetNotes(projectId: string, locationId: string, notes: string): Project | undefined {
-  if (notes.length > 2000) {
+  const trimmed = notes.trim();
+  if (trimmed.length > 2000) {
     throw new Error('NOTES_TOO_LONG');
   }
 
   return updateLocation(projectId, locationId, (location) => {
-    if (location.notes === notes) {
+    if (location.notes === trimmed) {
       return { ...location };
     }
 
-    return { ...location, notes };
+    return { ...location, notes: trimmed };
   });
 }
 
@@ -492,8 +493,8 @@ export async function preparePhoto(file: File): Promise<string> {
   return dataUrl;
 }
 
-export function addSetPhoto(projectId: string, locationId: string, input: string | AddPhotoInput): Project {
-  const project = updateLocation(projectId, locationId, (location) => {
+export function addSetPhoto(projectId: string, locationId: string, input: string | AddPhotoInput): Project | undefined {
+  return updateLocation(projectId, locationId, (location) => {
     const dataUrl = typeof input === 'string' ? input : input.dataUrl;
     if (location.photos.some((photo) => photo.dataUrl === dataUrl)) {
       return { ...location };
@@ -509,11 +510,16 @@ export function addSetPhoto(projectId: string, locationId: string, input: string
     return { ...location, photos: [...location.photos, photo] };
   });
 
-  if (!project) {
-    throw new Error('ADD_SET_PHOTO_FAILED');
+  if (duplicate) {
+    return false;
   }
 
-  return project;
+  if (!updatedProject) {
+    return undefined;
+  }
+
+  persist(projects);
+  return updatedProject;
 }
 
 export function removeSetPhoto(projectId: string, locationId: string, identifier: string): Project | undefined {
