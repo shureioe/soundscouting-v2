@@ -1,4 +1,4 @@
-import { Project } from '@/lib/storage';
+import { LocationSet, Project } from '@/lib/storage';
 
 function formatDate(): string {
   return new Date().toLocaleDateString('es-ES', {
@@ -92,4 +92,59 @@ export async function exportProjectPdf(project: Project): Promise<void> {
   });
 
   doc.save('Proyecto-' + project.id + '.pdf');
+}
+
+export async function exportLocationPdf(project: Project, location: LocationSet): Promise<void> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(26);
+  doc.text('Ficha de localización', pageWidth / 2, 120, { align: 'center' });
+
+  doc.setFontSize(20);
+  doc.text(project.name, pageWidth / 2, 160, { align: 'center' });
+
+  doc.setFontSize(18);
+  doc.text(location.name, pageWidth / 2, 195, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+  doc.text('Generado el ' + formatDate(), pageWidth / 2, 225, { align: 'center' });
+
+  doc.addPage();
+
+  const leftMargin = 72;
+  const topMargin = 100;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('Detalles de la localización', leftMargin, topMargin);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(12);
+
+  const statusMap: Record<string, string> = {
+    pending: 'Pendiente',
+    approved: 'Apta',
+    rejected: 'No apta'
+  };
+
+  const statusLabel = statusMap[location.status] ?? 'Pendiente';
+  doc.text('Estado: ' + statusLabel, leftMargin, topMargin + 40);
+
+  const notes = location.notes.trim();
+  const notesLines = notes
+    ? notes
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line, index) => line || index === 0)
+    : [];
+
+  const limitedNotes = notesLines.length > 0 ? notesLines.slice(0, 8) : ['Sin notas'];
+  doc.text('Notas:', leftMargin, topMargin + 70);
+  doc.text(doc.splitTextToSize(limitedNotes.join('\n'), pageWidth - leftMargin * 2), leftMargin, topMargin + 90);
+
+  doc.save('Localizacion-' + location.id + '.pdf');
 }

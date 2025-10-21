@@ -1,11 +1,17 @@
 export type LocationStatus = 'pending' | 'approved' | 'rejected';
 
+export interface LocationCoordinates {
+  lat: number;
+  lng: number;
+}
+
 export interface LocationSet {
   id: string;
   name: string;
   notes: string;
   status: LocationStatus;
   photos: string[];
+  coords?: LocationCoordinates | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -165,6 +171,7 @@ export function createLocation(projectId: string, name: string): Project | undef
       notes: '',
       status: 'pending',
       photos: [],
+      coords: null,
       createdAt: now,
       updatedAt: now
     };
@@ -178,6 +185,109 @@ export function createLocation(projectId: string, name: string): Project | undef
 
   persist(projects);
   return projects.find((project) => project.id === projectId);
+}
+
+function updateLocation(
+  projectId: string,
+  locationId: string,
+  updater: (location: LocationSet) => LocationSet | null
+): Project | undefined {
+  let updatedProject: Project | undefined;
+
+  const projects = getProjects().map((project) => {
+    if (project.id !== projectId) {
+      return project;
+    }
+
+    const index = project.locations.findIndex((location) => location.id === locationId);
+    if (index === -1) {
+      return project;
+    }
+
+    const currentLocation = project.locations[index];
+    const result = updater(currentLocation);
+    if (!result) {
+      return project;
+    }
+
+    const now = new Date().toISOString();
+    const updatedLocation: LocationSet = { ...result, id: currentLocation.id, createdAt: currentLocation.createdAt, updatedAt: now };
+    const updatedLocations = [...project.locations];
+    updatedLocations[index] = updatedLocation;
+    updatedProject = { ...project, updatedAt: now, locations: updatedLocations };
+    return updatedProject;
+  });
+
+  if (!updatedProject) {
+    return undefined;
+  }
+
+  persist(projects);
+  return updatedProject;
+}
+
+export function setSetStatus(projectId: string, locationId: string, status: LocationStatus): Project | undefined {
+  return updateLocation(projectId, locationId, (location) => {
+    if (location.status === status) {
+      return { ...location };
+    }
+
+    return { ...location, status };
+  });
+}
+
+export function setSetNotes(projectId: string, locationId: string, notes: string): Project | undefined {
+  if (notes.length > 2000) {
+    throw new Error('NOTES_TOO_LONG');
+  }
+
+  return updateLocation(projectId, locationId, (location) => {
+    if (location.notes === notes) {
+      return { ...location };
+    }
+
+    return { ...location, notes };
+  });
+}
+
+export function addSetPhoto(projectId: string, locationId: string, dataUrl: string): Project | undefined {
+  return updateLocation(projectId, locationId, (location) => {
+    if (location.photos.includes(dataUrl)) {
+      return { ...location };
+    }
+
+    return { ...location, photos: [...location.photos, dataUrl] };
+  });
+}
+
+export function removeSetPhoto(projectId: string, locationId: string, dataUrl: string): Project | undefined {
+  return updateLocation(projectId, locationId, (location) => {
+    const filtered = location.photos.filter((photo) => photo !== dataUrl);
+    if (filtered.length === location.photos.length) {
+      return null;
+    }
+
+    return { ...location, photos: filtered };
+  });
+}
+
+export function setSetCoords(
+  projectId: string,
+  locationId: string,
+  coords: LocationCoordinates | null
+): Project | undefined {
+  return updateLocation(projectId, locationId, (location) => {
+    if (
+      location.coords &&
+      coords &&
+      location.coords.lat === coords.lat &&
+      location.coords.lng === coords.lng
+    ) {
+      return { ...location };
+    }
+
+    return { ...location, coords };
+  });
 }
 
 export function deleteLocation(projectId: string, locationId: string): Project | undefined {
