@@ -131,7 +131,7 @@ function writeParagraph(options: ParagraphOptions): number {
     }
 
     const lines = doc.splitTextToSize(trimmed, width);
-    lines.forEach((line) => {
+    lines.forEach((line: string) => {
       cursorY = ensureSpace(doc, cursorY, lineHeight, marginTop, marginBottom);
       doc.text(line, x, cursorY);
       cursorY += lineHeight;
@@ -295,7 +295,7 @@ export function addKeyValue(doc: jsPDF, label: string, value: string, options: K
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  lines.forEach((line, index) => {
+  lines.forEach((line: string, index: number) => {
     const lineY = y + index * lineHeight;
     doc.text(line, valueX, lineY);
   });
@@ -520,7 +520,7 @@ export async function exportProjectPdf(project: Project): Promise<void> {
       doc.setFont('helvetica', 'bold');
       doc.text(line, marginTop, cursorY);
       doc.setFont('helvetica', 'normal');
-      summaryLines.forEach((summaryLine, summaryIndex) => {
+      summaryLines.forEach((summaryLine: string, summaryIndex: number) => {
         const summaryY = cursorY + (summaryIndex + 1) * 12;
         if (summaryY > limitY) {
           return;

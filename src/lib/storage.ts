@@ -95,7 +95,7 @@ function normalizeLocation(location: any): { location: LocationSet | null; chang
   let photosChanged = false;
   let coordsChanged = false;
 
-  photos.forEach((entry) => {
+  photos.forEach((entry: StoredPhoto) => {
     const { photo, changed } = normalizePhoto(entry, updatedAt);
     if (photo) {
       normalizedPhotos.push(photo);
@@ -155,7 +155,7 @@ function normalizeProject(project: any): { project: Project | null; changed: boo
   const normalizedLocations: LocationSet[] = [];
   let locationsChanged = false;
 
-  locations.forEach((item) => {
+  locations.forEach((item: any) => {
     const result = normalizeLocation(item);
     if (result.location) {
       normalizedLocations.push(result.location);
@@ -190,7 +190,7 @@ function normalizeProjects(raw: unknown): NormalizedProjects {
   const projects: Project[] = [];
   let changed = false;
 
-  raw.forEach((item) => {
+  raw.forEach((item: any) => {
     const result = normalizeProject(item);
     if (result.project) {
       projects.push(result.project);
@@ -493,8 +493,8 @@ export async function preparePhoto(file: File): Promise<string> {
   return dataUrl;
 }
 
-export function addSetPhoto(projectId: string, locationId: string, input: string | AddPhotoInput): Project | undefined {
-  return updateLocation(projectId, locationId, (location) => {
+export function addSetPhoto(projectId: string, locationId: string, input: string | AddPhotoInput): Project {
+  const project = updateLocation(projectId, locationId, (location) => {
     const dataUrl = typeof input === 'string' ? input : input.dataUrl;
     if (location.photos.some((photo) => photo.dataUrl === dataUrl)) {
       return { ...location };
@@ -510,16 +510,11 @@ export function addSetPhoto(projectId: string, locationId: string, input: string
     return { ...location, photos: [...location.photos, photo] };
   });
 
-  if (duplicate) {
-    return false;
+  if (!project) {
+    throw new Error('ADD_SET_PHOTO_FAILED');
   }
 
-  if (!updatedProject) {
-    return undefined;
-  }
-
-  persist(projects);
-  return updatedProject;
+  return project;
 }
 
 export function removeSetPhoto(projectId: string, locationId: string, identifier: string): Project | undefined {

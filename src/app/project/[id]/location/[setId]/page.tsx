@@ -43,159 +43,6 @@ const MAX_IMAGE_DIMENSION = 1600;
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 const JPEG_EXPORT_QUALITY = 0.8;
 
-type NormalizedImageType = 'png' | 'jpeg' | 'heic';
-
-interface ToastQueueItem {
-  message: string;
-  variant: ToastVariant;
-}
-
-interface ImageResource {
-  width: number;
-  height: number;
-  draw: (ctx: CanvasRenderingContext2D, targetWidth: number, targetHeight: number) => void;
-  cleanup?: () => void;
-}
-
-function readFileAsDataUrl(file: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => {
-      resolve(typeof reader.result === 'string' ? reader.result : '');
-    });
-    reader.addEventListener('error', () => {
-      reject(reader.error ?? new Error('READ_ERROR'));
-    });
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('IMAGE_LOAD_ERROR'));
-    image.src = dataUrl;
-  });
-}
-
-function detectImageType(file: File): NormalizedImageType | null {
-  const mime = (file.type || '').toLowerCase();
-  if (mime === 'image/png') {
-    return 'png';
-  }
-
-  if (mime === 'image/jpeg' || mime === 'image/jpg') {
-    return 'jpeg';
-  }
-
-  if (mime === 'image/heic' || mime === 'image/heif') {
-    return 'heic';
-  }
-
-  const extension = file.name.split('.').pop()?.toLowerCase();
-  if (!extension) {
-    return null;
-  }
-
-  if (extension === 'png') {
-    return 'png';
-  }
-
-  if (extension === 'jpg' || extension === 'jpeg') {
-    return 'jpeg';
-  }
-
-  if (extension === 'heic' || extension === 'heif') {
-    return 'heic';
-  }
-
-  return null;
-}
-
-async function loadImageResource(file: File, type: NormalizedImageType): Promise<ImageResource> {
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const bitmap = await createImageBitmap(file);
-      return {
-        width: bitmap.width,
-        height: bitmap.height,
-        draw: (ctx, targetWidth, targetHeight) => {
-          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-        },
-        cleanup: () => {
-          if (typeof bitmap.close === 'function') {
-            bitmap.close();
-          }
-        }
-      };
-    } catch (error) {
-      if (type === 'heic') {
-        throw new Error('HEIC_NOT_SUPPORTED');
-      }
-    }
-  }
-
-  try {
-    const dataUrl = await readFileAsDataUrl(file);
-    const image = await loadImageElement(dataUrl);
-    return {
-      width: image.width,
-      height: image.height,
-      draw: (ctx, targetWidth, targetHeight) => {
-        ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
-      }
-    };
-  } catch (error) {
-    if (type === 'heic') {
-      throw new Error('HEIC_NOT_SUPPORTED');
-    }
-    throw error instanceof Error ? error : new Error('IMAGE_LOAD_ERROR');
-  }
-}
-
-async function convertFileToJpegDataUrl(file: File, type: NormalizedImageType): Promise<string> {
-  const resource = await loadImageResource(file, type);
-  const { width, height } = resource;
-  if (!width || !height) {
-    resource.cleanup?.();
-    throw new Error('INVALID_IMAGE');
-  }
-
-  const maxSide = Math.max(width, height);
-  const scale = Math.min(1, MAX_IMAGE_DIMENSION / maxSide);
-  const targetWidth = Math.max(1, Math.round(width * scale));
-  const targetHeight = Math.max(1, Math.round(height * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-
-  const context = canvas.getContext('2d');
-  if (!context) {
-    resource.cleanup?.();
-    throw new Error('CANVAS_UNAVAILABLE');
-  }
-
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'high';
-
-  if (type === 'png') {
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, targetWidth, targetHeight);
-  }
-
-  resource.draw(context, targetWidth, targetHeight);
-  resource.cleanup?.();
-
-  const dataUrl = canvas.toDataURL('image/jpeg', JPEG_EXPORT_QUALITY);
-  if (!dataUrl) {
-    throw new Error('ENCODE_ERROR');
-  }
-
-  return dataUrl;
-}
-
 export default function LocationDetailPage(): React.ReactElement {
   const params = useParams<{ id: string; setId: string }>();
   const router = useRouter();
@@ -336,21 +183,14 @@ export default function LocationDetailPage(): React.ReactElement {
       setIsUploadingPhotos(true);
 
       try {
-        const dataUrls = await Promise.all(files.map((file) => readFileAsDataUrl(file)));
         let currentProject = project;
         let currentLocation = location;
         let addedCount = 0;
         let duplicateCount = 0;
         let failedCount = 0;
         let limitReached = false;
-
         for (const file of files) {
-        let limitReached = false;
-
-        for (let index = 0; index < dataUrls.length; index += 1) {
-          const dataUrl = dataUrls[index];
-
-          if (addedCount >= remainingSlots) {
+          if (remainingSlots <= 0) {
             limitReached = true;
             break;
           }
@@ -391,112 +231,67 @@ export default function LocationDetailPage(): React.ReactElement {
           break;
         }
 
-        const detectedType = detectImageType(file);
-        if (!detectedType) {
-          toastQueue.push({ message: 'Formato no soportado para ' + file.name + '.', variant: 'error' });
-          continue;
-        }
-
-        if (file.size > MAX_FILE_SIZE_BYTES) {
-          toastQueue.push({ message: 'El archivo ' + file.name + ' supera el límite de 20 MB.', variant: 'error' });
-          continue;
-        }
-
           if (currentLocation.photos.some((photoItem) => photoItem.dataUrl === dataUrl)) {
-        try {
-          const dataUrl = await convertFileToJpegDataUrl(file, detectedType);
-          const updated = addSetPhoto(currentProject.id, currentLocation.id, dataUrl);
-
-          if (updated === false) {
             duplicateCount += 1;
             toastQueue.push({ message: 'Foto duplicada omitida: ' + file.name + '.', variant: 'info' });
             continue;
           }
 
-          const updated = addSetPhoto(currentProject.id, currentLocation.id, {
-            dataUrl,
-            createdAt: new Date().toISOString(),
-            fileName: file.name
-          });
-          if (!updated) {
-            failedCount += 1;
-          if (!updated) {
-            toastQueue.push({ message: 'No se pudo guardar la imagen ' + file.name + '.', variant: 'error' });
+          try {
+            const updated = addSetPhoto(currentProject.id, currentLocation.id, {
+              dataUrl,
+              createdAt: new Date().toISOString(),
+              fileName: file.name
+            });
+            currentProject = updated;
+            currentLocation =
+              updated.locations.find((item) => item.id === currentLocation?.id) ?? currentLocation;
+
+            addedCount += 1;
+            remainingSlots -= 1;
+          } catch (error) {
+            if (error instanceof Error && error.message === 'HEIC_NOT_SUPPORTED') {
+              showToast('Formato HEIC no soportado en este navegador.', 'info');
+            } else {
+              failedCount += 1;
+              showToast('Error al procesar ' + file.name + '.', 'error');
+            }
             continue;
           }
-
-          currentProject = updated;
-          currentLocation =
-            updated.locations.find((item) => item.id === currentLocation?.id) ?? currentLocation;
-          addedCount += 1;
-          remainingSlots -= 1;
-        } catch (error) {
-          if (error instanceof Error) {
-            if (error.message === 'HEIC_NOT_SUPPORTED') {
-              toastQueue.push({
-                message: 'Formato HEIC no soportado en este navegador: ' + file.name + '.',
-                variant: 'error'
-              });
-            } else if (error.message === 'CANVAS_UNAVAILABLE') {
-              toastQueue.push({ message: 'El navegador no pudo procesar ' + file.name + '.', variant: 'error' });
-            } else if (error.message === 'ENCODE_ERROR' || error.message === 'INVALID_IMAGE') {
-              toastQueue.push({ message: 'La imagen ' + file.name + ' está dañada o no es válida.', variant: 'error' });
-            } else {
-              toastQueue.push({ message: 'No se pudo procesar ' + file.name + '.', variant: 'error' });
-            }
-          } else {
-            toastQueue.push({ message: 'No se pudo procesar ' + file.name + '.', variant: 'error' });
-          }
         }
       }
 
-      if (currentProject) {
-        setProject(currentProject);
-      }
-      if (currentLocation) {
-        setLocation(currentLocation);
-      }
+        // Actualiza estado en memoria para que la UI refleje los cambios
+        if (currentProject) {
+          setProject(currentProject);
+        }
+        if (currentLocation) {
+          setLocation(currentLocation);
+        }
 
-        if (addedCount > 0) {
-          const duplicateNote = duplicateCount > 0 ? ' Algunas imágenes ya existían y se omitieron.' : '';
-          const failureNote = failedCount > 0 ? ' Algunas imágenes no se pudieron procesar.' : '';
-          const limitNote = limitReached
-            ? ' Se alcanzó el máximo de fotos y quedaron archivos pendientes de añadir.'
-            : '';
-          const variant: ToastVariant = limitReached ? 'info' : 'success';
-          showToast(
-            'Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + '.' + duplicateNote + failureNote + limitNote,
-          const limitNote = limitReached
+        // Mensajes de resumen
+        const duplicateNote =
+          duplicateCount > 0 ? ' Las imágenes seleccionadas ya estaban guardadas.' : '';
+        const failureNote =
+          failedCount > 0 ? ' No se pudieron procesar algunas imágenes. Inténtalo de nuevo.' : '';
+        const limitNote =
+          limitReached
             ? ' Se alcanzó el máximo de fotos y no se procesaron todas las imágenes seleccionadas.'
             : '';
-          const variant: ToastVariant = limitReached ? 'info' : 'success';
-          showToast(
-            'Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + '.' + duplicateNote + limitNote,
-            variant
-          );
-        } else if (limitReached) {
-          showToast(
-            'Se alcanzó el máximo de fotos para esta localización y quedaron archivos sin procesar.',
-            'info'
-          );
-        } else if (duplicateCount > 0 && failedCount === 0) {
-          showToast('Las imágenes seleccionadas ya estaban guardadas.', 'error');
-        } else if (failedCount > 0) {
-          showToast('No se pudieron procesar algunas imágenes. Inténtalo de nuevo.', 'error');
-            'Se alcanzó el máximo de fotos para esta localización y no se procesaron todas las imágenes seleccionadas.',
-            'info'
-          );
-        } else if (duplicateCount > 0) {
-          showToast('Las imágenes seleccionadas ya estaban guardadas.', 'error');
-        } else {
-          toastQueue.push({ message: 'No se pudieron añadir las imágenes seleccionadas.', variant: 'error' });
-        }
 
-        toastQueue.forEach((toastItem, index) => {
-          window.setTimeout(() => {
-            showToast(toastItem.message, toastItem.variant);
-          }, index * 10);
-        });
+        const variant: ToastVariant = limitReached ? 'info' : 'success';
+
+        showToast(
+          'Se añadieron ' +
+            addedCount +
+            ' foto' +
+            (addedCount === 1 ? '' : 's') +
+            '.' +
+            duplicateNote +
+            failureNote +
+            limitNote,
+          variant
+        );
       } catch {
         showToast('No se pudieron procesar las imágenes. Inténtalo de nuevo.', 'error');
       } finally {
@@ -766,9 +561,6 @@ export default function LocationDetailPage(): React.ReactElement {
                     className='h-40 w-full object-cover'
                     loading='lazy'
                   />
-                <figure key={photo} className='group relative overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/60'>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo} alt={'Foto de ' + location.name} className='h-40 w-full object-cover' loading='lazy' />
                   <figcaption className='flex items-center justify-between gap-2 px-3 py-2 text-xs text-neutral-300'>
                     <span className='truncate'>
                       {new Date(photo.createdAt).toLocaleString('es-ES')}
