@@ -203,9 +203,34 @@ export default function LocationDetailPage(): React.ReactElement {
             failedCount += 1;
             continue;
           }
+      const toastQueue: ToastQueueItem[] = [];
+      let currentProject: Project | null = project;
+      let currentLocation: LocationSet | null = location;
+      let addedCount = 0;
+      let duplicateCount = 0;
+      let limitReached = false;
+
+      const flushToastQueue = (queue: ToastQueueItem[]) => {
+        queue.forEach((item, index) => {
+          window.setTimeout(() => {
+            showToast(item.message, item.variant);
+          }, index * 150);
+        });
+      };
+
+      for (const file of files) {
+        if (!currentProject || !currentLocation) {
+          break;
+        }
+
+        if (remainingSlots <= 0) {
+          limitReached = true;
+          break;
+        }
 
           if (currentLocation.photos.some((photoItem) => photoItem.dataUrl === dataUrl)) {
             duplicateCount += 1;
+            toastQueue.push({ message: 'Foto duplicada omitida: ' + file.name + '.', variant: 'info' });
             continue;
           }
 
@@ -231,6 +256,7 @@ export default function LocationDetailPage(): React.ReactElement {
             continue;
           }
         }
+      }
 
         // Actualiza estado en memoria para que la UI refleje los cambios
         if (currentProject) {
@@ -270,6 +296,32 @@ export default function LocationDetailPage(): React.ReactElement {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+      if (addedCount > 0) {
+        toastQueue.push({
+          message:
+            'Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + ' correctamente.',
+          variant: 'success'
+        });
+      }
+
+      if (limitReached) {
+        toastQueue.push({
+          message: 'Se alcanzó el máximo de 10 fotos para esta localización.',
+          variant: 'info'
+        });
+      }
+
+      if (duplicateCount > 0 && addedCount === 0) {
+        toastQueue.push({ message: 'Las imágenes seleccionadas ya estaban guardadas.', variant: 'info' });
+      }
+
+      if (toastQueue.length > 0) {
+        flushToastQueue(toastQueue);
+      }
+
+      setIsUploadingPhotos(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
     }, [location, project, showToast]);
 
