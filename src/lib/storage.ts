@@ -409,16 +409,17 @@ export function setSetStatus(projectId: string, locationId: string, status: Loca
 }
 
 export function setSetNotes(projectId: string, locationId: string, notes: string): Project | undefined {
-  if (notes.length > 2000) {
+  const trimmed = notes.trim();
+  if (trimmed.length > 2000) {
     throw new Error('NOTES_TOO_LONG');
   }
 
   return updateLocation(projectId, locationId, (location) => {
-    if (location.notes === notes) {
+    if (location.notes === trimmed) {
       return { ...location };
     }
 
-    return { ...location, notes };
+    return { ...location, notes: trimmed };
   });
 }
 
