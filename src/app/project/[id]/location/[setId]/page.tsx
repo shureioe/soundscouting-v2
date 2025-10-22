@@ -39,9 +39,6 @@ const statusOptions: { value: LocationStatus; label: string }[] = [
 
 const MAX_NOTES_LENGTH = 2000;
 const MAX_PHOTOS = 10;
-const MAX_IMAGE_DIMENSION = 1600;
-const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
-const JPEG_EXPORT_QUALITY = 0.8;
 
 export default function LocationDetailPage(): React.ReactElement {
   const params = useParams<{ id: string; setId: string }>();
@@ -326,9 +323,7 @@ export default function LocationDetailPage(): React.ReactElement {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    },
-    [location, project, showToast]
-  );
+    }, [location, project, showToast]);
 
   const handleRemovePhoto = React.useCallback(
     (photoId: string) => {
