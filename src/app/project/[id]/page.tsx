@@ -1,5 +1,6 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import React from 'react';
@@ -283,7 +284,7 @@ export default function ProjectPage(): React.ReactElement {
                   <CardFooter className='flex items-center justify-between gap-2'>
                     <Button type='button' variant='ghost' onClick={() => handleDeleteLocation(location.id, location.name)}>Eliminar</Button>
                     <Link
-                      href={'/project/' + project.id + '/location/' + location.id}
+                      href={('/project/' + project.id + '/location/' + location.id) as Route}
                       className='inline-flex items-center justify-center rounded-md bg-emerald-500 px-3 py-2 text-sm font-semibold text-neutral-950 transition group-hover:bg-emerald-400'
                     >
                       Ver detalle

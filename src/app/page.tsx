@@ -1,5 +1,6 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -219,7 +220,7 @@ export default function HomePage(): React.ReactElement {
                       <Button type='button' variant='ghost' onClick={() => handleDeleteProject(project)}>Eliminar</Button>
                     </div>
                     <Link
-                      href={'/project/' + project.id}
+                      href={'/project/' + project.id as Route}
                       className='inline-flex items-center justify-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400'
                     >
                       Abrir

@@ -1,5 +1,6 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import React from 'react';
@@ -629,7 +630,9 @@ export default function LocationDetailPage(): React.ReactElement {
     return (
       <section className='space-y-6'>
         <p className='text-sm text-neutral-400'>No encontramos la localización solicitada.</p>
-        <Button type='button' onClick={() => router.push('/project/' + project.id)}>Volver al proyecto</Button>
+        <Button type='button' onClick={() => router.push(('/project/' + project.id) as Route)}>
+          Volver al proyecto
+        </Button>
       </section>
     );
   }
@@ -647,7 +650,11 @@ export default function LocationDetailPage(): React.ReactElement {
           <p className='text-sm text-neutral-400'>Proyecto: {project.name}</p>
         </div>
         <div className='flex flex-wrap gap-2'>
-          <Button type='button' variant='ghost' onClick={() => router.push('/project/' + project.id)}>
+          <Button
+            type='button'
+            variant='ghost'
+            onClick={() => router.push(('/project/' + project.id) as Route)}
+          >
             Volver al proyecto
           </Button>
           <Button type='button' variant='secondary' disabled={isExporting} onClick={handleExportPdf}>
@@ -787,7 +794,7 @@ export default function LocationDetailPage(): React.ReactElement {
           <p>ID de la localización: {location.id}</p>
           <p>Última actualización: {new Date(location.updatedAt).toLocaleString('es-ES')}</p>
         </div>
-        <Link href={'/project/' + project.id} className='text-emerald-400 underline-offset-4 hover:underline'>
+        <Link href={('/project/' + project.id) as Route} className='text-emerald-400 underline-offset-4 hover:underline'>
           Volver al proyecto {project.name}
         </Link>
       </footer>
