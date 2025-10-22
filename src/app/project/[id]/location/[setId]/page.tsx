@@ -72,15 +72,30 @@ export default function LocationDetailPage(): React.ReactElement {
       return;
     }
 
-    const currentLocation = currentProject.locations.find((item) => item.id === params.setId) ?? null;
     setProject(currentProject);
+
+    const currentLocation =
+      currentProject.locations.find((l) => l.id === params.setId) ?? null;
+
     setLocation(currentLocation);
-    if (currentLocation) {
-      setStatusValue(currentLocation.status);
-      setNotesValue(currentLocation.notes);
-    }
     setIsLoading(false);
+
+    // limpia el input de archivos si existe
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [params?.id, params?.setId]);
+
+  React.useEffect(() => {
+    if (!location) {
+      setStatusValue('pending');
+      setNotesValue('');
+      return;
+    }
+
+    setStatusValue(location.status);
+    setNotesValue(location.notes);
+  }, [location]);
 
   React.useEffect(() => {
     if (!toast) {
@@ -302,26 +317,6 @@ export default function LocationDetailPage(): React.ReactElement {
             'Se añadieron ' + addedCount + ' foto' + (addedCount === 1 ? '' : 's') + ' correctamente.',
           variant: 'success'
         });
-      }
-
-      if (limitReached) {
-        toastQueue.push({
-          message: 'Se alcanzó el máximo de 10 fotos para esta localización.',
-          variant: 'info'
-        });
-      }
-
-      if (duplicateCount > 0 && addedCount === 0) {
-        toastQueue.push({ message: 'Las imágenes seleccionadas ya estaban guardadas.', variant: 'info' });
-      }
-
-      if (toastQueue.length > 0) {
-        flushToastQueue(toastQueue);
-      }
-
-      setIsUploadingPhotos(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
       }
     }, [location, project, showToast]);
 
