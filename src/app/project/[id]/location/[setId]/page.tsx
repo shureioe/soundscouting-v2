@@ -106,6 +106,12 @@ export default function LocationDetailPage(): React.ReactElement {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  React.useEffect(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [location, project, showToast]);
+
   const refreshLocation = React.useCallback(
     (updatedProject: Project | undefined, showError = true) => {
       if (!updatedProject) {
@@ -235,11 +241,6 @@ export default function LocationDetailPage(): React.ReactElement {
 
       for (const file of files) {
         if (!currentProject || !currentLocation) {
-          break;
-        }
-
-        if (remainingSlots <= 0) {
-          limitReached = true;
           break;
         }
 
